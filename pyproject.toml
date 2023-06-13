@@ -1,0 +1,13 @@
+[tool.pylint.format]
+max-line-length = "100"
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
