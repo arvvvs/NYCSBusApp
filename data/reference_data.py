@@ -1,7 +1,9 @@
-from connnections.google_drive import DriveService
-import pandas as pd
-from data.CONSTANTS import GEOTAB_MAPPINGS_CSV
 from io import BytesIO
+
+import pandas as pd
+
+from connnections.google_drive import DriveService
+from data.CONSTANTS import GEOTAB_MAPPINGS_CSV
 
 
 def get_geotab_mappings_raw_file() -> BytesIO:

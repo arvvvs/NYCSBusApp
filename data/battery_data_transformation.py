@@ -1,12 +1,14 @@
+import json
+
+import pandas as pd
+import pytz
+
 from data.CONSTANTS import BATTERY_RAW_DATA_FOLDER
 from data.reference_data import get_geotab_mappings_dataframe
 from data.utilities import (
-    list_files_in_shared_drive_folder,
     get_csv_from_drive_as_dataframe,
+    list_files_in_shared_drive_folder,
 )
-import pandas as pd
-import pytz
-import json
 
 
 def get_raw_data_file_ids() -> list[str]:
@@ -32,7 +34,9 @@ def generate_dataframe_for_battery_raw_data() -> pd.DataFrame:
     battery_raw_data_file_ids = get_raw_data_file_ids()
     print(battery_raw_data_file_ids)
     giant_battery_data_csv_df = pd.concat(
-        format_battery_df(get_csv_from_drive_as_dataframe(file, {"dtype": str, "index_col": 0}))
+        format_battery_df(
+            get_csv_from_drive_as_dataframe(file, {"dtype": str, "index_col": 0})
+        )
         for file in battery_raw_data_file_ids
     )
     return giant_battery_data_csv_df
@@ -51,7 +55,9 @@ def generate_battery_view_data(
     battery_voltage_raw_data_df = battery_voltage_raw_data_df.merge(
         geotab_df, left_on=["device"], right_on=["Geotab Device"]
     )
-    return battery_voltage_raw_data_df[["data", "dateTime", "estDateTime", "Bus #"]]
+    return battery_voltage_raw_data_df[
+        ["data", "epochTimestamp", "estDateTime", "Bus #"]
+    ]
 
 
 def format_battery_df(battery_raw_df: pd.DataFrame) -> pd.DataFrame:
@@ -67,12 +73,15 @@ def format_battery_df(battery_raw_df: pd.DataFrame) -> pd.DataFrame:
     if len(battery_raw_df):
         battery_raw_df["data"] = battery_raw_df["data"].astype(float)
         battery_raw_df["device"] = battery_raw_df["device"].apply(get_id_from_json)
-        battery_raw_df["diagnostic"] = battery_raw_df["diagnostic"].apply(get_id_from_json)
+        battery_raw_df["diagnostic"] = battery_raw_df["diagnostic"].apply(
+            get_id_from_json
+        )
         est_tz = pytz.timezone("US/Eastern")
         battery_raw_df["dateTime"] = pd.to_datetime(
             battery_raw_df["dateTime"], format="mixed"
         )
         battery_raw_df["estDateTime"] = battery_raw_df["dateTime"].dt.tz_convert(est_tz)
+        battery_raw_df["epochTimestamp"] = battery_raw_df["dateTime"].timestamp()
     return battery_raw_df
 
 
