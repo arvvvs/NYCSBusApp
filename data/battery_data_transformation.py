@@ -56,7 +56,7 @@ def generate_battery_view_data(
         geotab_df, left_on=["device"], right_on=["Geotab Device"]
     )
     return battery_voltage_raw_data_df[
-        ["data", "epochTimestamp", "estDateTime", "Bus #"]
+        ["data", "dateTime", "estDateTime", "Bus #"]
     ]
 
 
@@ -81,7 +81,6 @@ def format_battery_df(battery_raw_df: pd.DataFrame) -> pd.DataFrame:
             battery_raw_df["dateTime"], format="mixed"
         )
         battery_raw_df["estDateTime"] = battery_raw_df["dateTime"].dt.tz_convert(est_tz)
-        battery_raw_df["epochTimestamp"] = battery_raw_df["dateTime"].timestamp()
     return battery_raw_df
 
 
