@@ -1,5 +1,7 @@
 from io import BytesIO
 
+import json
+
 import pandas as pd
 
 
@@ -54,3 +56,38 @@ def get_csv_from_drive_as_dataframe(
         BytesIO(DriveService().get_file(file_id, **drive_kwargs)),
         **pandas_read_csv_kwargs,
     )
+def get_id_from_json(x) -> str:
+    """Takes columns containing strings {'id':'device_number'}
+    and gets teh device number. Created for use in DataFrame
+    apply function
+
+    Args:
+        x (_type_): the parameter from apply
+
+    Returns:
+        str: device number
+    """
+    try:
+        dict_data = json.loads(x.replace("'", '"'))
+        return dict_data["id"]
+    except Exception as e:
+        print(type(x))
+        print(x)
+        print(e)
+        return x
+
+
+def get_raw_data_file_ids(folder_id: str) -> list[str]:
+    """Gets a list of all battery raw file ids
+    Args:
+        folder_id (pd.DataFrame): Folder containing csvs to pull
+
+    Returns:
+        list[str]: list of ids containing the csvs of the different raw files
+    """
+    # TODO: update to ensure only csvs are pulled
+    return [
+        files["id"]
+        for files in list_files_in_shared_drive_folder(folder_id)
+    ]
+

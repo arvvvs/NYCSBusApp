@@ -1,27 +1,16 @@
-import json
 
 import pandas as pd
 import pytz
+from io import StringIO
 
-from data.CONSTANTS import BATTERY_RAW_DATA_FOLDER
+from data.CONSTANTS import BATTERY_RAW_DATA_FOLDER, BATTERY_VIEW_DATA_CSV,METRICS_FINALIZED_DATA_FOLDER
 from data.reference_data import get_geotab_mappings_dataframe
 from data.utilities import (
     get_csv_from_drive_as_dataframe,
-    list_files_in_shared_drive_folder,
+    get_id_from_json,
+    get_raw_data_file_ids,
 )
 
-
-def get_raw_data_file_ids() -> list[str]:
-    """Gets a list of all battery raw file ids
-
-    Returns:
-        list[str]: list of ids containing the csvs of the different raw files
-    """
-    # TODO: update to ensure only csvs are pulled
-    return [
-        files["id"]
-        for files in list_files_in_shared_drive_folder(BATTERY_RAW_DATA_FOLDER)
-    ]
 
 
 def generate_dataframe_for_battery_raw_data() -> pd.DataFrame:
@@ -31,7 +20,7 @@ def generate_dataframe_for_battery_raw_data() -> pd.DataFrame:
     Returns:
         pd.DataFrame: Raw battery data across all geotab devices
     """
-    battery_raw_data_file_ids = get_raw_data_file_ids()
+    battery_raw_data_file_ids = get_raw_data_file_ids(BATTERY_RAW_DATA_FOLDER)
     print(battery_raw_data_file_ids)
     giant_battery_data_csv_df = pd.concat(
         format_battery_df(
@@ -84,25 +73,18 @@ def format_battery_df(battery_raw_df: pd.DataFrame) -> pd.DataFrame:
     return battery_raw_df
 
 
-def get_id_from_json(x) -> str:
-    """Takes columns containing strings {'id':'device_number'}
-    and gets teh device number. Created for use in DataFrame
-    apply function
 
-    Args:
-        x (_type_): the parameter from apply
-
-    Returns:
-        str: device number
+def upload_battery_view_data():
+    """Generates and uploads the battery data in a format that inlcudes the view
     """
-    try:
-        dict_data = json.loads(x.replace("'", '"'))
-        return dict_data["id"]
-    except Exception as e:
-        print(type(x))
-        print(x)
-        print(e)
-        return x
+    from connnections.google_drive import DriveService
+    battery_df = generate_battery_view_data(generate_dataframe_for_battery_raw_data())
+    DriveService().upload_file(
+        filename="battery_view_data.csv",
+        file_id=BATTERY_VIEW_DATA_CSV,
+        folder_id=METRICS_FINALIZED_DATA_FOLDER,
+        file=StringIO(battery_df.to_csv(index=False)),
+        mimetype="text/csv",
+    )
 
 
-# def upload_battery_view_data():
