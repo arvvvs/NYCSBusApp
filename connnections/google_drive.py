@@ -7,14 +7,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import (
-    BatchHttpRequest,
-    MediaFileUpload,
-    MediaIoBaseDownload,
-    MediaIoBaseUpload,
-)
-
-from data.utilities import chunk_list
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 
 class DownloadRequestWrapper:
@@ -192,3 +185,19 @@ class DriveService:
             return file
 
         return media.get("id")
+
+    def list_files_in_shared_drive_folder(
+        self,
+        folder_id: str,
+    ) -> list:
+        return (
+            self.list_files(
+                **{
+                    "supportsAllDrives": True,
+                    "includeItemsFromAllDrives": True,
+                    "q": f"'{folder_id}' in parents and trashed = false",
+                    "pageSize": 1000,
+                }
+            )
+            or []
+        )

@@ -1,26 +1,12 @@
-from io import BytesIO
-
 import json
-
+from io import BytesIO
+from typing import Optional
+from pandas.io.parsers.readers import (
+    TextFileReader,
+)
 import pandas as pd
 
-
-def list_files_in_shared_drive_folder(
-    folder_id: str,
-) -> list:
-    from connnections.google_drive import DriveService
-
-    return (
-        DriveService().list_files(
-            **{
-                "supportsAllDrives": True,
-                "includeItemsFromAllDrives": True,
-                "q": f"'{folder_id}' in parents and trashed = false",
-                "pageSize": 1000,
-            }
-        )
-        or []
-    )
+from connnections.google_drive import DriveService
 
 
 def chunk_list(lst: list, n: int) -> list[list]:
@@ -38,8 +24,11 @@ def chunk_list(lst: list, n: int) -> list[list]:
 
 
 def get_csv_from_drive_as_dataframe(
-    file_id: str, pandas_read_csv_kwargs: dict = {}, drive_kwargs: dict = {}
-) -> pd.DataFrame:
+    file_id: str,
+    drive_service: DriveService = DriveService(),
+    pandas_read_csv_kwargs: dict = {},
+    drive_kwargs: dict = {},
+) -> pd.DataFrame | TextFileReader:
     """Downloads a csv file and converts it into a dataframe making it easy to use using pandas read_csv attribute.
 
     Args:
@@ -48,36 +37,18 @@ def get_csv_from_drive_as_dataframe(
         drive_kwargs (dict): Any arguments passing to the drive call
 
     Returns:
-        pd.DataFrame: DataFrame containing the data
+        Union[pd.DataFrame, TextFileReader]: DataFrame containing the data.  If chunksize is used then TextFileReader returned
     """
-    from connnections.google_drive import DriveService
-
     return pd.read_csv(
-        BytesIO(DriveService().get_file(file_id, **drive_kwargs)),
+        BytesIO(drive_service.get_file(file_id, **drive_kwargs)),
         **pandas_read_csv_kwargs,
     )
-def get_id_from_json(x) -> str:
-    """Takes columns containing strings {'id':'device_number'}
-    and gets teh device number. Created for use in DataFrame
-    apply function
-
-    Args:
-        x (_type_): the parameter from apply
-
-    Returns:
-        str: device number
-    """
-    try:
-        dict_data = json.loads(x.replace("'", '"'))
-        return dict_data["id"]
-    except Exception as e:
-        print(type(x))
-        print(x)
-        print(e)
-        return x
 
 
-def get_raw_data_file_ids(folder_id: str) -> list[str]:
+
+def get_raw_data_file_ids(
+    folder_id: str, drive_service: DriveService = DriveService()
+) -> list[str]:
     """Gets a list of all battery raw file ids
     Args:
         folder_id (pd.DataFrame): Folder containing csvs to pull
@@ -88,6 +59,5 @@ def get_raw_data_file_ids(folder_id: str) -> list[str]:
     # TODO: update to ensure only csvs are pulled
     return [
         files["id"]
-        for files in list_files_in_shared_drive_folder(folder_id)
+        for files in drive_service.list_files_in_shared_drive_folder(folder_id)
     ]
-
