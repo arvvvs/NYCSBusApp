@@ -1,10 +1,7 @@
-import json
 from io import BytesIO
-from typing import Optional
-from pandas.io.parsers.readers import (
-    TextFileReader,
-)
+
 import pandas as pd
+from pandas.io.parsers.readers import TextFileReader
 
 from connnections.google_drive import DriveService
 
@@ -29,7 +26,8 @@ def get_csv_from_drive_as_dataframe(
     pandas_read_csv_kwargs: dict = {},
     drive_kwargs: dict = {},
 ) -> pd.DataFrame | TextFileReader:
-    """Downloads a csv file and converts it into a dataframe making it easy to use using pandas read_csv attribute.
+    """Downloads a csv file and converts it into a dataframe
+    making it easy to use using pandas read_csv attribute.
 
     Args:
         file_id (str): Alphanumeric ID of the file you're trying to retrieve
@@ -37,13 +35,13 @@ def get_csv_from_drive_as_dataframe(
         drive_kwargs (dict): Any arguments passing to the drive call
 
     Returns:
-        Union[pd.DataFrame, TextFileReader]: DataFrame containing the data.  If chunksize is used then TextFileReader returned
+        Union[pd.DataFrame, TextFileReader]: DataFrame containing the data.
+        If chunksize is used then TextFileReader returned
     """
     return pd.read_csv(
         BytesIO(drive_service.get_file(file_id, **drive_kwargs)),
         **pandas_read_csv_kwargs,
     )
-
 
 
 def get_raw_data_file_ids(

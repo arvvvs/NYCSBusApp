@@ -3,17 +3,14 @@ import os.path
 from typing import Optional, TypedDict
 
 from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
-
-class DownloadRequestWrapper:
-    def __init__(self, media_request):
-        self.media_request = media_request
-        self.resumable = media_request.resumable
+from connnections.utilities import check_if_ec2
 
 
 class GoogleDriveFileListTypedDict(TypedDict):
@@ -42,6 +39,51 @@ class DriveService:
         reference documenation: https://developers.google.com/drive/api/quickstart/python
         https://google-auth-oauthlib.readthedocs.io/en/latest/reference/google_auth_oauthlib.flow.html
         """
+        print("initializng client")
+        if (ec2 := check_if_ec2()) and os.path.exists(self.token_dir):
+            try:
+                self.oob_method()
+            except Exception as e:
+                print(f"Could not use oob method due to error {e}")
+                self.service_account_call()
+        elif ec2:
+            self.service_account_call()
+        else:
+            print(f"{ec2}")
+            self.flow_method_account_call()
+
+    def flow_method_account_call(self):
+        creds = None
+        # The file token.json stores the user's access and refresh tokens, and is
+        # created automatically when the authorization flow completes for the first
+        # time.
+        if os.path.exists(DriveService.token_dir):
+            creds = Credentials.from_authorized_user_file("token.json", self.scopes)
+        # If there are no (valid) credentials available, let the user log in.
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    f"{self.secrets_dir}drive_cred.json", DriveService.scopes
+                )
+                creds = flow.run_local_server(port=0)
+            # Save the credentials for the next run
+            with open("token.json", "w") as token:
+                token.write(creds.to_json())
+
+        self.service = build("drive", "v3", credentials=creds)
+
+    def service_account_call(self):
+        print("initializing with a service account call")
+        json_keyfile = f"{self.secrets_dir}/service_account_key.json"
+        # Load the credentials
+        credentials = service_account.Credentials.from_service_account_file(
+            json_keyfile, scopes=["https://www.googleapis.com/auth/drive"]
+        )
+        self.service = build("drive", "v3", credentials=credentials)
+
+    def oob_method(self):
         self.creds = None
         # The file token.json stores the user's access and refresh tokens, and is
         # created automatically when the authorization flow completes for the first
@@ -72,13 +114,16 @@ class DriveService:
 
     def list_files(self, **kwargs) -> Optional[list[GoogleDriveFileListTypedDict]]:
         """
-        Lists files in drive.  Pass in arguments as specified in https://developers.google.com/drive/api/quickstart/python
+        Lists files in drive.  Pass in arguments as specified in
+        https://developers.google.com/drive/api/quickstart/python
         in a dictionary (ie {'pageSize':10}) and they'll be invoked.
         By default currently calls the account owners drive (no shared drive)
-        kwargs[Dict]: Dictionary of arguments which will be invoked when the google drive service requests files
+        kwargs[Dict]: Dictionary of arguments which will be invoked
+        when the google drive service requests files
 
         Returns:
-            Optional[dict[str,str]]: Assuming valid arguments returns file names and ids. Otherwise returns none
+            Optional[dict[str,str]]: Assuming valid arguments returns file names and ids.
+            Otherwise returns none
         """
         # set page size if not specified
         kwargs.setdefault("pageSize", 100)
@@ -98,7 +143,8 @@ class DriveService:
                 items += results.get("files", [])
                 next_page_token = results.get("nextPageToken", None)
                 print(
-                    f"Retrieved {len(results.get('files'))} with last file being {results.get('files')[-1]}"
+                    f"Retrieved {len(results.get('files'))} "
+                    f"with last file being {results.get('files')[-1]}"
                 )
                 if next_page_token is None or not len(results.get("files")):
                     break
@@ -115,7 +161,8 @@ class DriveService:
 
         Args:
             file_id (str): The alphanumeric id for each file
-            shared_drive (bool, optional): Whether to include all drives associated with the account. Defaults to True.
+            shared_drive (bool, optional): Whether to include all drives associated
+            with the account. Defaults to True.
 
         Raises:
             ValueError: Incase of error

@@ -1,4 +1,5 @@
 from typing import Callable
+
 from data.CONSTANTS import (
     BATTERY_RAW_DATA_FOLDER,
     BATTERY_VIEW_DATA_CSV,
@@ -13,8 +14,7 @@ from data.metrics_transformation import (
 
 
 def generate_and_upload_battery_view():
-    """Function to generate and upload metric data for batteries
-    """
+    """Function to generate and upload metric data for batteries"""
     battery_df = generate_metric_view_data(
         generate_dataframe_for_metric_data(BATTERY_RAW_DATA_FOLDER)
     )
@@ -22,17 +22,14 @@ def generate_and_upload_battery_view():
 
 
 def generate_and_upload_rpm_view():
-    """Function to generate and upload metric data for rpm
-    """
+    """Function to generate and upload metric data for rpm"""
     rpm_df = generate_metric_view_data(
         generate_dataframe_for_metric_data(RPM_RAW_DATA_FOLDER)
     )
     upload_metrics_view_data(RPM_VIEW_DATA_CSV, "rpm_view_data.csv", rpm_df)
 
 
-METRIC_GENERATION_UPLOAD:list[Callable] = [
+METRIC_GENERATION_UPLOAD: list[Callable] = [
     generate_and_upload_battery_view,
     generate_and_upload_rpm_view,
 ]
-
-

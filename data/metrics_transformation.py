@@ -1,16 +1,15 @@
-from io import StringIO
 import json
+from io import StringIO
 
 import pandas as pd
 import pytz
-from pandas.io.parsers.readers import (
-    TextFileReader,
-)
-from data.CONSTANTS import METRICS_FINALIZED_DATA_FOLDER, METRICS_SNAPSHOT_FOLDER
+from pandas.io.parsers.readers import TextFileReader
 
 from connnections.google_drive import DriveService
+from data.CONSTANTS import METRICS_FINALIZED_DATA_FOLDER, METRICS_SNAPSHOT_FOLDER
 from data.reference_data import get_geotab_mappings_dataframe
 from data.utilities import get_csv_from_drive_as_dataframe, get_raw_data_file_ids
+
 
 def get_id_from_json(x) -> str:
     """Takes columns containing strings {'id':'device_number'}
@@ -34,8 +33,8 @@ def get_id_from_json(x) -> str:
 
 
 def generate_dataframe_for_metric_data(metric_folder_id: str) -> pd.DataFrame:
-    """As currently all the raw files are split into smaller csvs this generates a singular large dataframe
-    containing all the files
+    """As currently all the raw files are split into smaller csvs
+    this generates a singular large dataframe containing all the files
 
     Returns:
         pd.DataFrame: Raw metric data across all geotab devices
@@ -46,14 +45,14 @@ def generate_dataframe_for_metric_data(metric_folder_id: str) -> pd.DataFrame:
         format_metric_df(
             get_csv_from_drive_as_dataframe(
                 file, drive_service, {"dtype": str, "index_col": 0, "chunksize": 2000}
-            ) # type: ignore
+            )  # type: ignore
         )
         for file in metric_file_id_list
     )
     return giant_metric_data_csv_df
 
 
-def format_metric_df(chunks:TextFileReader) -> pd.DataFrame:
+def format_metric_df(chunks: TextFileReader) -> pd.DataFrame:
     """
     Gets chunks from the read_csv when data is passed down with chunksize
 
@@ -75,7 +74,7 @@ def format_metric_df(chunks:TextFileReader) -> pd.DataFrame:
                     metrics_raw_df["dateTime"],
                     format="%Y-%m-%d %H:%M:%S.%f%z",
                 )
-            except:
+            except ValueError:
                 metrics_raw_df["dateTime"] = pd.to_datetime(
                     metrics_raw_df["dateTime"], format="mixed"
                 )
@@ -83,7 +82,9 @@ def format_metric_df(chunks:TextFileReader) -> pd.DataFrame:
             metrics_raw_df["estDateTime"] = metrics_raw_df["dateTime"].dt.tz_convert(
                 est_tz
             )
-            metrics_raw_df[["estDateTime","dateTime"]] = metrics_raw_df[["estDateTime","dateTime"]].astype(str)
+            metrics_raw_df[["estDateTime", "dateTime"]] = metrics_raw_df[
+                ["estDateTime", "dateTime"]
+            ].astype(str)
     return metrics_raw_df.drop_duplicates(keep="first")
 
 
@@ -114,9 +115,20 @@ def upload_metrics_view_data(file_id: str, file_name: str, metric_df: pd.DataFra
         metric_df (pd.DataFrame): The data being uploaded
     """
     drive_service = DriveService()
-    current_view_metrics_df = pd.DataFrame(get_csv_from_drive_as_dataframe(
-        file_id, drive_service=drive_service, pandas_read_csv_kwargs={'dtype':{'data':float, 'dateTime':str,'estDateTime':str,'Bus #':str}}
-    ))
+    current_view_metrics_df = pd.DataFrame(
+        get_csv_from_drive_as_dataframe(
+            file_id,
+            drive_service=drive_service,
+            pandas_read_csv_kwargs={
+                "dtype": {
+                    "data": float,
+                    "dateTime": str,
+                    "estDateTime": str,
+                    "Bus #": str,
+                }
+            },
+        )
+    )
     metric_df = (
         pd.concat([current_view_metrics_df, metric_df])
         .sort_values(by=["dateTime", "Bus #"])
@@ -125,11 +137,21 @@ def upload_metrics_view_data(file_id: str, file_name: str, metric_df: pd.DataFra
     )
     if not current_view_metrics_df.equals(metric_df):
         from datetime import datetime
-        snapshot_file_name = f"{file_name.split('.csv')[0]}_{datetime.now().strftime('%Y-%m-%d %H:%M')}.csv"
-        print(f"old dataframe {len(current_view_metrics_df)} rows. New dataframe {len(metric_df)} rows")
-        print(f"New data is being uploaded view csv.  Creating backup of new file first {snapshot_file_name}")
+
+        snapshot_file_name = (
+            f"{file_name.split('.csv')[0]}"
+            f"_{datetime.now().strftime('%Y-%m-%d %H:%M')}.csv"
+        )
+        print(
+            f"old dataframe {len(current_view_metrics_df)} rows."
+            f"New dataframe {len(metric_df)} rows"
+        )
+        print(
+            "New data is being uploaded view csv."
+            f" Creating backup of new file first {snapshot_file_name}"
+        )
         drive_service.upload_file(
-            filename= snapshot_file_name,
+            filename=snapshot_file_name,
             folder_id=METRICS_SNAPSHOT_FOLDER,
             file=StringIO(metric_df.to_csv(index=False)),
             mimetype="text/csv",
@@ -142,4 +164,3 @@ def upload_metrics_view_data(file_id: str, file_name: str, metric_df: pd.DataFra
         file=StringIO(current_view_metrics_df.to_csv(index=False)),
         mimetype="text/csv",
     )
-
