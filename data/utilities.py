@@ -1,4 +1,5 @@
 from io import BytesIO
+from typing import Any
 
 import pandas as pd
 from pandas.io.parsers.readers import TextFileReader
@@ -6,7 +7,7 @@ from pandas.io.parsers.readers import TextFileReader
 from connnections.google_drive import DriveService
 
 
-def chunk_list(lst: list, n: int) -> list[list]:
+def chunk_list(lst: list[Any], n: int) -> list[list[Any]]:
     """Generates a list of lists from the list passed in to parameter
     lst, where each list is of n size.
 
@@ -55,7 +56,15 @@ def get_raw_data_file_ids(
         list[str]: list of ids containing the csvs of the different raw files
     """
     # TODO: update to ensure only csvs are pulled
-    return [
-        files["id"]
-        for files in drive_service.list_files_in_shared_drive_folder(folder_id)
-    ]
+    return list(
+        sorted(
+            set(
+                [
+                    files["id"]
+                    for files in drive_service.list_files_in_shared_drive_folder(
+                        folder_id
+                    )
+                ]
+            )
+        )
+    )

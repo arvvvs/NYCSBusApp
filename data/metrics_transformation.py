@@ -1,6 +1,9 @@
 import json
 from io import StringIO
+from typing import Literal
 
+import dask.dataframe as dd
+import numpy as np
 import pandas as pd
 import pytz
 from pandas.io.parsers.readers import TextFileReader
@@ -42,17 +45,23 @@ def generate_dataframe_for_metric_data(metric_folder_id: str) -> pd.DataFrame:
     drive_service = DriveService()
     metric_file_id_list = get_raw_data_file_ids(metric_folder_id, drive_service)
     giant_metric_data_csv_df = pd.concat(
-        format_metric_df(
-            get_csv_from_drive_as_dataframe(
-                file, drive_service, {"dtype": str, "index_col": 0, "chunksize": 2000}
-            )  # type: ignore
-        )
-        for file in metric_file_id_list
+        [
+            format_metric_df(
+                get_csv_from_drive_as_dataframe(
+                    file,
+                    drive_service,
+                    {"dtype": str, "index_col": 0, "chunksize": 200},
+                )  # type: ignore
+            )
+            for file in metric_file_id_list
+        ],
     )
     return giant_metric_data_csv_df
 
 
-def format_metric_df(chunks: TextFileReader) -> pd.DataFrame:
+def format_metric_df(
+    chunks: TextFileReader, data_dtype: Literal["float", "integer"] = "float"
+) -> pd.DataFrame:
     """
     Gets chunks from the read_csv when data is passed down with chunksize
 
@@ -62,36 +71,64 @@ def format_metric_df(chunks: TextFileReader) -> pd.DataFrame:
     Returns:
         pd.DataFrame: metric data reformatted to have better types per columns and a utc datetime
     """
-    metrics_raw_df = pd.DataFrame({})
-    for metrics_raw_df in chunks:
-        if len(metrics_raw_df):
-            metrics_raw_df = metrics_raw_df[["data", "device", "dateTime"]]
-            metrics_raw_df["data"] = metrics_raw_df["data"].astype(float)
-            metrics_raw_df["device"] = metrics_raw_df["device"].apply(get_id_from_json)
-            est_tz = pytz.timezone("US/Eastern")
-            try:
-                metrics_raw_df["dateTime"] = pd.to_datetime(
-                    metrics_raw_df["dateTime"],
-                    format="%Y-%m-%d %H:%M:%S.%f%z",
-                )
-            except ValueError:
-                metrics_raw_df["dateTime"] = pd.to_datetime(
-                    metrics_raw_df["dateTime"], format="mixed"
-                )
+    pd.set_option("mode.chained_assignment", None)
+    metrics_total_df = pd.concat(
+        parse_metric_df(metrics_raw_df, data_dtype=data_dtype)
+        if len(metrics_raw_df)
+        else pd.DataFrame()
+        for metrics_raw_df in chunks
+    )
+    pd.reset_option("mode.chained_assignment")
+    print(len(metrics_total_df))
+    return metrics_total_df.drop_duplicates(keep="first")
 
-            metrics_raw_df["estDateTime"] = metrics_raw_df["dateTime"].dt.tz_convert(
-                est_tz
-            )
-            metrics_raw_df[["estDateTime", "dateTime"]] = metrics_raw_df[
-                ["estDateTime", "dateTime"]
-            ].astype(str)
-    return metrics_raw_df.drop_duplicates(keep="first")
+
+def parse_metric_df(
+    metric_raw_chunk_df: pd.DataFrame, data_dtype: Literal["float", "integer"] = "float"
+) -> pd.DataFrame:
+    metric_raw_chunk_df = metric_raw_chunk_df[["data", "device", "dateTime"]]
+    if data_dtype == "integer":
+        metric_raw_chunk_df["data"] = pd.to_numeric(
+            metric_raw_chunk_df["data"].astype(float).round().astype(int),
+            downcast="integer",
+        )
+    else:
+        metric_raw_chunk_df["data"] = pd.to_numeric(
+            metric_raw_chunk_df["data"].astype(np.float64).round(2), downcast="float"
+        )
+
+    metric_raw_chunk_df["device"] = (
+        metric_raw_chunk_df["device"].apply(get_id_from_json).astype("category")
+    )
+    est_tz = pytz.timezone("US/Eastern")
+    try:
+        metric_raw_chunk_df["dateTime"] = pd.to_datetime(
+            metric_raw_chunk_df["dateTime"],
+            format="%Y-%m-%d %H:%M:%S.%f%z",
+        )
+    except ValueError:
+        metric_raw_chunk_df["dateTime"] = pd.to_datetime(
+            metric_raw_chunk_df["dateTime"], format="mixed"
+        )
+
+    metric_raw_chunk_df["estDateTime"] = metric_raw_chunk_df["dateTime"].dt.tz_convert(
+        est_tz
+    )
+    metric_raw_chunk_df["estDateTime"] = metric_raw_chunk_df["estDateTime"].dt.strftime(
+        "%Y-%m-%d %H:%M:%S%z"
+    )
+    metric_raw_chunk_df["dateTime"] = pd.to_numeric(
+        metric_raw_chunk_df["dateTime"].dt.strftime("%s"), downcast="integer"
+    )
+
+    return metric_raw_chunk_df.drop_duplicates(keep="first")
 
 
 def generate_metric_view_data(
     metric_data_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Gets the battery voltage data including the bus # associated with the geotab.
+    """Gets the metric data such as  battery voltage data
+    including the bus # associated with the geotab.
     Includes formatting and such.
 
     Returns:
@@ -101,10 +138,15 @@ def generate_metric_view_data(
     metric_data_df = metric_data_df.merge(
         geotab_df, left_on=["device"], right_on=["Geotab Device"]
     )
-    return metric_data_df[["data", "dateTime", "estDateTime", "Bus #"]]
+    metric_data_df["Bus #"] = metric_data_df["Bus #"].astype("category")
+    return metric_data_df[["data", "dateTime", "estDateTime", "Bus #"]].drop_duplicates(
+        keep="first"
+    )
 
 
-def upload_metrics_view_data(file_id: str, file_name: str, metric_df: pd.DataFrame):
+def upload_metrics_view_data(
+    file_id: str, file_name: str, metric_df: pd.DataFrame, overwrite: bool = False
+):
     """Gets the existing metrics view file appends the new data to it and uploads the result.
     It also compares the dataframe created to the current view dataframe.  If the data is different
     then a snapshot of the view data is saved in the View Data/Metrics Snapshot folder
@@ -115,36 +157,56 @@ def upload_metrics_view_data(file_id: str, file_name: str, metric_df: pd.DataFra
         metric_df (pd.DataFrame): The data being uploaded
     """
     drive_service = DriveService()
-    current_view_metrics_df = pd.DataFrame(
-        get_csv_from_drive_as_dataframe(
-            file_id,
-            drive_service=drive_service,
-            pandas_read_csv_kwargs={
-                "dtype": {
-                    "data": float,
-                    "dateTime": str,
-                    "estDateTime": str,
-                    "Bus #": str,
-                }
-            },
+    current_view_metrics_df = pd.DataFrame()
+    if overwrite == False:
+        current_view_metrics_df = pd.DataFrame(
+            get_csv_from_drive_as_dataframe(
+                file_id,
+                drive_service=drive_service,
+                pandas_read_csv_kwargs={
+                    "dtype": {
+                        "data": "float16[pyarrow]",
+                        "Bus #": "category",
+                        "estDateTime": "string[pyarrow]",
+                        "dateTime": "uint32[pyarrow]",
+                    },
+                },
+            )
         )
-    )
+    # current_view_metrics_df['estDateTime'] = pd.to_datetime(current_view_metrics_df['estDateTime'], format="mixed", utc=False, errors="coerce")
+    # current_view_metrics_df['estDateTime'] = current_view_metrics_df['estDateTime'].apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S%z'))
+    # current_view_metrics_df['estDateTime'] = current_view_metrics_df['estDateTime'].astype("string")
+    # current_view_metrics_df['dateTime'] = pd.to_datetime(current_view_metrics_df['dateTime'], format="mixed", utc=False, errors="coerce")
+    # current_view_metrics_df['dateTime'] = current_view_metrics_df['dateTime]'].dt.strftime('%s').astype(np.int16)
+    # current_view_metrics_df['dateTime'] = current_view_metrics_df['dateTime'].apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S%z'))
+    # current_view_metrics_df['estDateTime'] = current_view_metrics_df['estDateTime'].astype("string")
+    # current_view_metrics_df['dateTime'] = current_view_metrics_df['dateTime'].astype("string")
+
     metric_df = (
         pd.concat([current_view_metrics_df, metric_df])
         .sort_values(by=["dateTime", "Bus #"])
         .drop_duplicates(keep="first")
         .reset_index(drop=True)
     )
-    if not current_view_metrics_df.equals(metric_df):
+    # metric_df['data'] = pd.to_numeric(metric_df['data'], downcast="integer")
+    # metric_df['dateTime'] = pd.to_numeric(metric_df['dateTime'], downcast="integer")
+    # metric_df['estDateTime'] = metric_df['estDateTime'].convert_dtypes(dtype_backend="pyarrow")
+    # metric_df['Bus #'] = metric_df['Bus #'].astype('category')
+    if not current_view_metrics_df.equals(metric_df) and not overwrite:
         from datetime import datetime
+
+        current_view_metrics_df_rowcount = len(current_view_metrics_df)
+        del current_view_metrics_df
+        metric_df_len = len(metric_df)
+        metric_df = StringIO(metric_df.to_csv(index=False))  # type:ignore
 
         snapshot_file_name = (
             f"{file_name.split('.csv')[0]}"
             f"_{datetime.now().strftime('%Y-%m-%d %H:%M')}.csv"
         )
         print(
-            f"old dataframe {len(current_view_metrics_df)} rows."
-            f"New dataframe {len(metric_df)} rows"
+            f"old dataframe {current_view_metrics_df_rowcount} rows."
+            f"New dataframe {metric_df_len} rows"
         )
         print(
             "New data is being uploaded view csv."
@@ -153,14 +215,20 @@ def upload_metrics_view_data(file_id: str, file_name: str, metric_df: pd.DataFra
         drive_service.upload_file(
             filename=snapshot_file_name,
             folder_id=METRICS_SNAPSHOT_FOLDER,
-            file=StringIO(metric_df.to_csv(index=False)),
+            file=metric_df,
             mimetype="text/csv",
         )
+    else:
+        del current_view_metrics_df
 
     drive_service.upload_file(
         filename=file_name,
         file_id=file_id,
         folder_id=METRICS_FINALIZED_DATA_FOLDER,
-        file=StringIO(current_view_metrics_df.to_csv(index=False)),
+        file=(
+            StringIO(metric_df.to_csv(index=False))
+            if isinstance(metric_df, pd.DataFrame)
+            else metric_df
+        ),
         mimetype="text/csv",
     )
