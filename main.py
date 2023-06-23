@@ -10,10 +10,12 @@ from data.metric_generation_upload import (
     METRIC_GENERATION_UPLOAD,
 )
 
+from data.metrics_transformation import get_rpm_data
 
 def main():
     # generate_breakdown_view_data(generate_dataframe_for_breakdown_data((BREAKDOWN_RAW_DATA_FOLDER))) # type: ignore
-    deque((metric_upload() for metric_upload in METRIC_GENERATION_UPLOAD), maxlen=0)
+    # deque((metric_upload() for metric_upload in METRIC_GENERATION_UPLOAD), maxlen=0)
+    df = get_rpm_data(nrows="Random")
 
 
 if __name__ == "__main__":

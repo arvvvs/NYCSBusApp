@@ -1,4 +1,5 @@
 import json
+
 from io import StringIO
 from typing import Literal
 
@@ -10,8 +11,9 @@ from pandas.io.parsers.readers import TextFileReader
 
 from connnections.google_drive import DriveService
 from data.CONSTANTS import METRICS_FINALIZED_DATA_FOLDER, METRICS_SNAPSHOT_FOLDER
+from data.CONSTANTS import RPM_VIEW_DATA_CSV
 from data.reference_data import get_geotab_mappings_dataframe
-from data.utilities import get_csv_from_drive_as_dataframe, get_raw_data_file_ids
+from data.utilities import get_csv_from_drive_as_dataframe, get_raw_data_file_ids, get_random_sample_of_chunks
 
 
 def get_id_from_json(x) -> str:
@@ -232,3 +234,63 @@ def upload_metrics_view_data(
         ),
         mimetype="text/csv",
     )
+
+def get_rpm_data(nrows:Literal["All","Random"]|int = "All", usecols:list[str]=['data','Bus #', 'estDateTime'])->pd.DataFrame:
+    """Returns RPM data optimized with options allowing for nrows or a random sampling of data, as well
+    as not returning dateTime
+
+    Args:
+        nrows (Literal['All','Random'] | int, optional): All returns all rows, Random will return a sampling
+        of 70% of the rows randomly chosen and a number n will return top n rows. Defaults to "All".
+        usecols (list[str], optional): Which cols you want returned. Defaults to ['data','Bus #', 'estDateTime'].
+
+    Returns:
+        pd.DataFrame: RPM data returned with a tad more optimization
+    """
+    pandas_read_csv_kwargs = {
+        "dtype": {
+            "data": "int16[pyarrow]",
+            "Bus #": "category",
+            "estDateTime": "string[pyarrow]",
+            "dateTime": "uint32[pyarrow]",
+        },
+        "usecols":usecols,
+        # "parse_dates":['estDateTime'],
+        # "infer_datetime_format":True,
+        "dtype_backend":"pyarrow"
+    }
+    def _remove_est_tz_info(df:pd.DataFrame)->pd.DataFrame:
+        df['estDateTime'] = df['estDateTime'].str.rsplit('-',n=1,expand=True)[0]
+        df['Bus #'] = df['Bus #'].astype('category')
+        return df
+
+    drive_service = DriveService()
+    if isinstance(nrows, int):
+        pandas_read_csv_kwargs = {
+            "nrows":nrows,
+            **pandas_read_csv_kwargs,
+        }
+    else:
+        pandas_read_csv_kwargs = {
+            "chunksize":2000,
+            **pandas_read_csv_kwargs,
+        }
+
+    if nrows == "Random":
+        rpm_view_df =  _remove_est_tz_info(get_random_sample_of_chunks(
+            get_csv_from_drive_as_dataframe(
+                RPM_VIEW_DATA_CSV,
+                drive_service=drive_service,
+                pandas_read_csv_kwargs=pandas_read_csv_kwargs        
+        ), sample_percent=0.7)) # type: ignore
+        rpm_view_df['Bus #'] = rpm_view_df['Bus #'].astype('category')
+        return rpm_view_df
+
+ 
+    rpm_view_chunks = get_csv_from_drive_as_dataframe(
+            RPM_VIEW_DATA_CSV,
+            drive_service=drive_service,
+            pandas_read_csv_kwargs=pandas_read_csv_kwargs        
+    )
+    return pd.concat((_remove_est_tz_info(rpm_view_df) for rpm_view_df in rpm_view_chunks), ignore_index=True) # type: ignore
+
