@@ -69,8 +69,11 @@ def get_raw_data_file_ids(
         )
     )
 
-def get_random_sample_of_chunks(chunks:TextFileReader, sample_percent:float=0.50)->pd.DataFrame:
-    """If using the chunksize parameter to read csv and wanting to return a sample of the dataframe 
+
+def get_random_sample_of_chunks(
+    chunks: TextFileReader, sample_percent: float = 0.50
+) -> pd.DataFrame:
+    """If using the chunksize parameter to read csv and wanting to return a sample of the dataframe
     csv use this function to help drive down memory usage while returninga random sampleof data
 
     Args:
@@ -81,8 +84,5 @@ def get_random_sample_of_chunks(chunks:TextFileReader, sample_percent:float=0.50
     Returns:
         pd.DataFrame: The dataframe with the sample chosen.
     """
-    total_df = pd.concat((
-        df.sample(n=int(len(df) * sample_percent))
-        for df in chunks
-    ))
+    total_df = pd.concat((df.sample(n=int(len(df) * sample_percent)) for df in chunks))
     return total_df

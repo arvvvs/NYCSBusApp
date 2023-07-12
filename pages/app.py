@@ -2,11 +2,9 @@ import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
-from sklearn.ensemble import IsolationForest
 
 from data.CONSTANTS import BATTERY_VIEW_DATA_CSV, BUS_BREAKDOWN_VIEW, RPM_VIEW_DATA_CSV
-from data.metrics_transformation import get_rpm_data
-from data.utilities import get_csv_from_drive_as_dataframe
+from streamlit_utilities import get_battery_data, get_breakdown_data, get_rpm_data
 
 
 # Function to detect anomalies based on Isolation Forest
@@ -50,8 +48,7 @@ def display_tables_side_by_side(tables, titles=[]):
 
 # Function for Battery anomaly detection
 def battery_anomaly_detection():
-    file_id = BATTERY_VIEW_DATA_CSV
-    file_data = get_csv_from_drive_as_dataframe(file_id)
+    file_data = get_battery_data()
 
     if file_data is not None:
         file_data["estDateTime"] = pd.to_datetime(
@@ -100,7 +97,6 @@ def battery_anomaly_detection():
 
 # Function for RPM anomaly detection
 def rpm_anomaly_detection():
-    file_id = RPM_VIEW_DATA_CSV
     file_data = get_rpm_data(nrows="Random")
 
     if file_data is not None:
@@ -166,20 +162,16 @@ def get_month(x):
 
 # Function for the "Overview" page
 def overview_page():
-    battery_file_id = BATTERY_VIEW_DATA_CSV
-    rpm_file_id = RPM_VIEW_DATA_CSV
-    breakdown_file_id = BUS_BREAKDOWN_VIEW
-
-    battery_data = get_csv_from_drive_as_dataframe(battery_file_id)
+    battery_data = get_battery_data()
     rpm_data = get_rpm_data(nrows="Random")
-    breakdown_data = get_csv_from_drive_as_dataframe(breakdown_file_id)
+    breakdown_data = get_breakdown_data()
 
     if battery_data is not None and rpm_data is not None and breakdown_data is not None:
         st.title("Overview - Average Statistics for All Buses")
 
         st.subheader("Battery Readings")
         avg_battery_readings = (
-            battery_data.groupby("Bus #")["data"].mean().reset_index()
+            battery_data.groupby("Bus #")["data"].mean().reset_index()  # type: ignore
         )
         overall_avg_battery = avg_battery_readings["data"].mean()
         st.write(f"Average Battery Reading for All Buses: {overall_avg_battery:.2f}")
@@ -196,20 +188,18 @@ def overview_page():
 
 # Function for the "Individual Bus Statistics" page
 def individual_bus_statistics_page():
-    battery_file_id = BATTERY_VIEW_DATA_CSV
-    rpm_file_id = RPM_VIEW_DATA_CSV
     breakdown_file_id = BUS_BREAKDOWN_VIEW
 
-    battery_data = get_csv_from_drive_as_dataframe(battery_file_id)
-    rpm_data = get_csv_from_drive_as_dataframe(rpm_file_id)
-    breakdown_data = get_csv_from_drive_as_dataframe(breakdown_file_id)
+    battery_data = get_battery_data()
+    rpm_data = get_rpm_data()
+    breakdown_data = get_breakdown_data()
     color_scheme = ["steelblue", "darkorange", "limegreen"]
 
     if battery_data is not None and rpm_data is not None and breakdown_data is not None:
         unique_buses = (
-            set(battery_data["Bus #"])
-            & set(rpm_data["Bus #"])
-            & set(breakdown_data["Bus #"])
+            set(battery_data["Bus #"].astype(str))
+            | set(rpm_data["Bus #"].astype(str))
+            | set(breakdown_data["Bus #"].astype(str))
         )
         unique_buses = sorted(unique_buses)  # Sort the unique bus numbers
 
@@ -299,25 +289,25 @@ def breakdown_data_analysis():
     import nltk
     from rake_nltk import Rake
     from st_aggrid import AgGrid
+    from st_aggrid.shared import GridUpdateMode
 
     nltk.download("stopwords")
     nltk.download("punkt")
     # Read the breakdown data CSV file
-    file_id = BUS_BREAKDOWN_VIEW
-    file_data = get_csv_from_drive_as_dataframe(file_id)
+    bus_breakdown_view_df = get_breakdown_data()
 
     r = Rake(
         min_length=1,
         max_length=4,
         language="english",
         include_repeated_phrases=False,
-        stopwords=[
+        stopwords={
             "will not start",
             "ignition broke",
             "vandalized",
             "shift gears",
-            "door",
-        ],
+            "driver" "door",
+        },
     )
 
     def extract_keywords(text: str):
@@ -333,15 +323,23 @@ def breakdown_data_analysis():
             else ""
         )
 
-    file_data["description"] = file_data["description"].astype(str)
-    file_data["keywords"] = file_data["description"].apply(extract_keywords)
+    bus_breakdown_view_df["description"] = bus_breakdown_view_df["description"].astype(
+        str
+    )
+    bus_breakdown_view_df["keywords"] = bus_breakdown_view_df["description"].apply(
+        extract_keywords
+    )
     # Convert the 'estReportedAt' column to datetime type and extract year and month
     # file_data['Year'] = file_data['estReportedAt'].apply(get_year)
-    file_data["Month"] = file_data["estReportedAt"].apply(get_month)
+    bus_breakdown_view_df["Month"] = bus_breakdown_view_df["estReportedAt"].apply(
+        get_month
+    )
 
     # Group the data by Month and breakdown description, and count the occurrences
     grouped_data = (
-        file_data.groupby(["Month", "keywords"])["Bus #"].count().reset_index()
+        bus_breakdown_view_df.groupby(["Month", "keywords"])["Bus #"]
+        .count()
+        .reset_index()
     )
     grouped_data.columns = ["Month", "Keywords", "Count"]
 
@@ -376,7 +374,21 @@ def breakdown_data_analysis():
 
     # Display the chart using Streamlit
     st.altair_chart(chart, use_container_width=True)
-    AgGrid(file_data)
+    bus_breakdown_view_df = bus_breakdown_view_df[
+        ["Bus #", "estReportedAt", "Month", "description", "keywords"]
+    ]
+    bus_breakdown_view_df = bus_breakdown_view_df.rename(
+        columns={
+            "estReportedAt": "Reported At",
+            "description": "Description",
+            "keywords": "Keywords",
+        }
+    )
+    AgGrid(
+        bus_breakdown_view_df,
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        reload_data=True,
+    )
 
 
 # Main function to run the app

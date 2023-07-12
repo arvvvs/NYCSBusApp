@@ -2,6 +2,7 @@ import io
 import os.path
 from typing import Optional, TypedDict
 
+import streamlit as st
 from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
@@ -18,6 +19,7 @@ class GoogleDriveFileListTypedDict(TypedDict):
     name: str  # human name of the file as saved by user
 
 
+@st.cache_resource
 class DriveService:
     """A Class created to make it easier to call different methods of the google drive API
     as specified here: https://developers.google.com/drive/api/quickstart/python
