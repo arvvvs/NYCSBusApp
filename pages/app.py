@@ -250,14 +250,14 @@ def individual_bus_statistics_page():
             breakdown_data["Bus #"] == selected_bus
         ]
         selected_breakdown_data["estReportedAt"] = pd.to_datetime(
-            selected_breakdown_data["estReportedAt"]
+            selected_breakdown_data["estReportedAt"], format="mixed"
         )
         selected_breakdown_data["Year"] = selected_breakdown_data[
             "estReportedAt"
-        ].dt.year
+        ].apply(get_year)
         selected_breakdown_data["Month"] = selected_breakdown_data[
             "estReportedAt"
-        ].dt.month
+        ].apply(get_month)
 
         # Calculate breakdown counts
         breakdown_counts = (

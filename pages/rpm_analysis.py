@@ -75,6 +75,7 @@ def main():
     # Detect anomalies based on standard deviation
     outlier_indices = detect_anomalies(rpm_view_df["RPM"])
     anomalies = rpm_view_df.iloc[outlier_indices]
+    anomalies = anomalies.merge(get_breakdown_count_by_bus(), how="left", on=["Bus #"])
 
     rpm_view_df["anomaly"] = False
     rpm_view_df.anomaly.iloc[outlier_indices] = True
@@ -88,7 +89,6 @@ def main():
     top_x = 5  # Set the desired number of top buses
     top_buses = anomalies_sorted.head(top_x)
 
-    anomalies = anomalies.merge(get_breakdown_count_by_bus(), how="left", on=["Bus #"])
     anomaly_count_by_bus = (
         anomalies.groupby(by=["Bus #", "Breakdowns"])["RPM"].agg("count").reset_index()
     )
@@ -100,7 +100,7 @@ def main():
     )
 
     top_buses_breakdown = (
-        anomalies_sorted[["Bus #", "RPM"]]
+        anomalies_sorted[["Bus #", "RPM", "Breakdowns"]]
         .drop_duplicates(keep="first", subset=["Bus #"])
         .reset_index()
     )
@@ -113,12 +113,12 @@ def main():
         + int(middle_x / 2)
         + 10
     ]
-    middle_buses_breakdown = middle_buses[["Bus #", "RPM"]].head(middle_x)
+    middle_buses_breakdown = middle_buses[["Bus #", "RPM", "Breakdowns"]].head(middle_x)
 
     # Get the bottom X buses with anomalies and their corresponding datetime
     bottom_x = 5  # Set the desired number of bottom buses
     bottom_buses = anomalies_sorted.tail(bottom_x)
-    bottom_buses_breakdown = bottom_buses[["Bus #", "RPM"]]
+    bottom_buses_breakdown = bottom_buses[["Bus #", "RPM", "Breakdowns"]]
 
     # Plot each of the top, middle, and bottom buses separately
     bus_options = set(rpm_view_df["Bus #"])
@@ -137,22 +137,22 @@ def main():
     st.write(anomalies)
 
     st.title("Buses with top number of detected anomalies")
-    st.write(top_buses)
+    st.write(top_buses.reset_index())
 
     # Display the breakdown of the top, middle, and bottom buses side by side
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.write(f"Buses with top {top_x} anomalies:")
+        st.write(f"Buses with anomalies with top {top_x} highest RPM readings:")
         st.write(top_buses_breakdown.head(top_x))
 
     with col2:
-        st.write(f"Buses with middle {middle_x} anomalies:")
-        st.write(middle_buses_breakdown)
+        st.write(f"Buses with anomalies with {middle_x} RPM readings:")
+        st.write(middle_buses_breakdown.reset_index())
 
     with col3:
-        st.write(f"Buses with bottom {bottom_x} anomalies:")
-        st.write(bottom_buses_breakdown)
+        st.write(f"Buses with anomalies with bottom {bottom_x} RPM readings:")
+        st.write(bottom_buses_breakdown.reset_index())
 
 
 if __name__ == "__main__":

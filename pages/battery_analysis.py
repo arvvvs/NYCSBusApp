@@ -97,7 +97,7 @@ def main():
     # Print the detected anomalies
     st.title("Battery Reading Anomaly Detection using IsolationForest Method")
     st.write("Detected anomalies:")
-    st.write(anomalies)
+    st.write(anomalies.reset_index())
 
     st.write("Buses with Top # of Anomalies")
     st.write(
@@ -144,7 +144,7 @@ def main():
         st.write(
             f"Top {middle_x} Buses with detected anomalies with mid level voltage readings: "
         )
-        st.write(middle_buses_breakdown)
+        st.write(middle_buses_breakdown.reset_index())
 
     with col3:
         # Get the bottom X buses with anomalies and their corresponding datetime
@@ -159,7 +159,7 @@ def main():
         st.write(
             f"Bottom {bottom_x} Buses with detected anomalies with lowest level voltage readings: "
         )
-        st.write(bottom_buses_breakdown)
+        st.write(bottom_buses_breakdown.reset_index())
 
 
 if __name__ == "__main__":
